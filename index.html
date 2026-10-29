@@ -451,6 +451,7 @@ footer p{margin:0 0 8px}
     armed: {},
     errors: {},
     drafts: {},
+    committers: {},
     storage: true
   };
 
@@ -824,6 +825,7 @@ footer p{margin:0 0 8px}
       spent = true;
       commitReading(entry.id, input.value);
     }
+    state.committers[input.id] = commit;
 
     input.addEventListener("input", function () { state.drafts[input.id] = input.value; });
     input.addEventListener("keydown", function (ev) {
@@ -941,6 +943,7 @@ footer p{margin:0 0 8px}
 
   function render() {
     renderLegend();
+    state.committers = {};
 
     var active = document.activeElement;
     var activeId = active && active.id ? active.id : null;
@@ -1020,10 +1023,13 @@ footer p{margin:0 0 8px}
      number is left alone — it would only fail validation. */
   function flushDrafts() {
     Object.keys(state.drafts).forEach(function (key) {
-      var id = key.slice(2);
       var text = state.drafts[key];
-      if (key.charAt(0) === "f") commitNote(id, text);
-      else if (key.charAt(0) === "r" && parseReading(text) !== null) commitReading(id, text);
+      if (key.charAt(0) === "f") { commitNote(key.slice(2), text); return; }
+      if (parseReading(text) === null) return;
+      /* Go through the box's own commit, so saving here still counts as its
+         one save and the blur that follows removal cannot repeat it. */
+      var commit = state.committers[key];
+      if (commit) commit();
     });
   }
 
