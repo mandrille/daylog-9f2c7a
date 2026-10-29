@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Day Log</title>
+<meta name="description" content="A private meal and reading log that stays on this device.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Day Log">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#191d23" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-512.png" sizes="512x512" type="image/png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one phone-width column — sticky bar with the two log buttons, then day-grouped cards, each with the meal on the left and its readings on the right */
+:root{
+  color-scheme:light;
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef1f5;
+  --ink:#14171c;
+  --muted:#5d6673;
+  --line:#dde2e9;
+  --action:#1b2129;
+  --action-ink:#ffffff;
+  --pending:#0d6a73;
+  --low:#3550c8;
+  --good:#1a7345;
+  --high:#8d5500;
+  --danger:#a32626;
+  --sans:'IBM Plex Sans','Helvetica Neue',Helvetica,Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  padding-top:env(safe-area-inset-top, 0px);
+  padding-bottom:env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101317;
+    --surface:#191d23;
+    --surface-2:#22272f;
+    --ink:#eef1f5;
+    --muted:#9aa4b2;
+    --line:#2d343d;
+    --action:#eef1f5;
+    --action-ink:#14171c;
+    --pending:#49c3cc;
+    --low:#8fa4ff;
+    --good:#5fc78e;
+    --high:#e0a44a;
+    --danger:#f08b8b;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101317;
+  --surface:#191d23;
+  --surface-2:#22272f;
+  --ink:#eef1f5;
+  --muted:#9aa4b2;
+  --line:#2d343d;
+  --action:#eef1f5;
+  --action-ink:#14171c;
+  --pending:#49c3cc;
+  --low:#8fa4ff;
+  --good:#5fc78e;
+  --high:#e0a44a;
+  --danger:#f08b8b;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{background:var(--bg)}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.45;
+  margin:0 auto;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:0 32px;
+  max-width:560px;
+  -webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
+}
+body::before{
+  content:"";
+  position:fixed;
+  inset:0 0 auto;
+  height:env(safe-area-inset-top, 0px);
+  background:var(--surface);
+  z-index:10;
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:default;opacity:0.45}
+:focus-visible{outline:2px solid var(--pending);outline-offset:2px}
+
+/* ---- top bar ---- */
+.bar{
+  position:sticky;
+  top:env(safe-area-inset-top, 0px);
+  z-index:9;
+  background:var(--surface);
+  border-bottom:1px solid var(--line);
+  margin:0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))) 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  padding:10px max(16px, env(safe-area-inset-left, 0px));
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.wordmark{display:flex;flex-direction:column;min-width:0}
+.wordmark b{font-weight:600;font-size:1.05rem;letter-spacing:-0.01em}
+.wordmark span{
+  font-size:0.7rem;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  color:var(--muted);
+}
+.units{
+  display:flex;
+  border:1px solid var(--line);
+  border-radius:999px;
+  overflow:hidden;
+  background:var(--surface-2);
+  flex:none;
+}
+.units button{
+  border:0;
+  background:transparent;
+  padding:7px 11px;
+  font-family:var(--mono);
+  font-size:0.74rem;
+  color:var(--muted);
+}
+.units button[aria-pressed="true"]{background:var(--action);color:var(--action-ink)}
+
+/* ---- actions ---- */
+.actions{display:flex;flex-direction:column;gap:8px;padding-block:18px 10px}
+.eat{
+  border:0;
+  border-radius:14px;
+  background:var(--action);
+  color:var(--action-ink);
+  padding:17px 18px;
+  font-size:1.06rem;
+  font-weight:600;
+  letter-spacing:-0.01em;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:58px;
+}
+.eat:active{transform:translateY(1px)}
+.eat .tick{
+  width:20px;height:20px;
+  border:2px solid currentColor;
+  border-radius:5px;
+  display:grid;place-items:center;
+  font-size:0.8rem;line-height:1;flex:none;
+}
+.plain{
+  border:1px solid var(--line);
+  background:transparent;
+  color:var(--muted);
+  border-radius:12px;
+  padding:11px 14px;
+  font-size:0.9rem;
+}
+
+/* ---- log ---- */
+.day{
+  padding-block:20px 2px;
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+}
+.day h2{
+  margin:0;
+  font-size:0.78rem;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.09em;
+  color:var(--muted);
+}
+.day .count{font-family:var(--mono);font-size:0.72rem;color:var(--muted)}
+.cards{display:flex;flex-direction:column;gap:8px}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px 12px 12px 14px;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px 12px;
+}
+.card.waiting{border-left:3px solid var(--pending);padding-left:12px}
+.meal{min-width:0;display:flex;flex-direction:column;gap:4px}
+.when{display:flex;align-items:center;gap:7px}
+.when .clock{
+  font-family:var(--mono);
+  font-size:1.26rem;
+  font-weight:500;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-0.02em;
+  background:transparent;
+  border:0;
+  padding:0;
+  color:var(--ink);
+  border-bottom:1px dashed var(--line);
+}
+.when input[type=time]{
+  font-family:var(--mono);
+  font-size:1.1rem;
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:3px 6px;
+}
+.kind{
+  font-size:0.66rem;
+  text-transform:uppercase;
+  letter-spacing:0.09em;
+  color:var(--muted);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:2px 7px;
+}
+.note{
+  border:0;
+  background:transparent;
+  padding:2px 0;
+  font-size:0.88rem;
+  color:var(--muted);
+  width:100%;
+  min-width:0;
+}
+.note::placeholder{color:var(--muted);opacity:0.62}
+
+.readings{display:flex;flex-direction:column;gap:6px;align-items:flex-end;min-width:0}
+.reading{display:flex;align-items:center;gap:8px}
+.reading .val{
+  font-family:var(--mono);
+  font-size:1.26rem;
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-0.02em;
+}
+.reading .unit{font-size:0.7rem;color:var(--muted)}
+.meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-family:var(--mono);
+  font-size:0.7rem;
+  color:var(--muted);
+  font-variant-numeric:tabular-nums;
+}
+.chip{
+  font-family:var(--sans);
+  font-size:0.66rem;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.06em;
+  padding:2px 7px;
+  border-radius:999px;
+  border:1px solid currentColor;
+}
+.chip.low{color:var(--low)}
+.chip.good{color:var(--good)}
+.chip.high{color:var(--high)}
+
+.slot{display:flex;align-items:center;gap:6px}
+.slot input{
+  width:82px;
+  text-align:center;
+  font-family:var(--mono);
+  font-size:1.1rem;
+  font-variant-numeric:tabular-nums;
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:9px 6px;
+}
+.slot input::placeholder{color:var(--muted);opacity:0.5}
+.slot .save{
+  border:0;
+  border-radius:10px;
+  background:var(--action);
+  color:var(--action-ink);
+  width:38px;height:38px;
+  font-size:0.95rem;
+  display:grid;place-items:center;
+  flex:none;
+}
+.addmore{
+  border:1px dashed var(--line);
+  background:transparent;
+  color:var(--muted);
+  border-radius:999px;
+  padding:4px 10px;
+  font-size:0.74rem;
+}
+.err{grid-column:1 / -1;font-size:0.78rem;color:var(--danger)}
+.rowend{grid-column:1 / -1;display:flex;justify-content:flex-end;gap:8px;align-items:center}
+.kill{border:0;background:transparent;color:var(--muted);font-size:0.76rem;padding:2px 4px}
+.kill.armed{color:var(--danger);font-weight:600}
+
+.empty{
+  border:1px dashed var(--line);
+  border-radius:14px;
+  padding:22px 18px;
+  color:var(--muted);
+  font-size:0.9rem;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.empty b{color:var(--ink);font-weight:600;font-size:0.98rem}
+.empty ol{margin:4px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+
+.notice{
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:12px 14px;
+  font-size:0.86rem;
+  color:var(--muted);
+  margin-block:10px;
+}
+.notice.warn{border-color:var(--danger);color:var(--danger)}
+
+footer{
+  padding-block:26px 0;
+  font-size:0.74rem;
+  color:var(--muted);
+  border-top:1px solid var(--line);
+  margin-top:26px;
+}
+footer p{margin:0 0 8px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.tools button,.tools label{
+  border:1px solid var(--line);
+  background:transparent;
+  color:var(--muted);
+  border-radius:999px;
+  padding:7px 12px;
+  font-size:0.76rem;
+  cursor:pointer;
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wordmark">
+    <b>Day Log</b>
+    <span id="tally">Meals and readings</span>
+  </div>
+  <div class="units" role="group" aria-label="Units">
+    <button type="button" id="u-mmol" aria-pressed="true">mmol/L</button>
+    <button type="button" id="u-mgdl" aria-pressed="false">mg/dL</button>
+  </div>
+</header>
+
+<main>
+  <div class="actions">
+    <button type="button" class="eat" id="ate"><span class="tick" aria-hidden="true">✓</span> I ate just now</button>
+    <button type="button" class="plain" id="readonly">Log a reading on its own</button>
+  </div>
+  <div id="status" class="notice" hidden></div>
+  <div id="log"></div>
+</main>
+
+<footer>
+  <div class="tools">
+    <button type="button" id="csv">Export CSV</button>
+    <button type="button" id="json">Back up (JSON)</button>
+    <label for="restore">Restore backup<input type="file" id="restore" accept=".json,application/json" hidden></label>
+  </div>
+  <p>Everything you log stays in this browser on this device. It is never sent anywhere, so nobody else can read it — and clearing your browser data or switching phone will lose it. Take a backup now and then.</p>
+  <p>Times come from this device's clock. Tap a time to correct it.</p>
+  <p>Range labels use the usual general reference bands (3.9–10.0 mmol/L, 70–180 mg/dL), not a target set for you. Talk to your diabetes team about your own numbers.</p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var KEY = "daylog.v1";
+
+  var UNITS = {
+    mmol: { label: "mmol/L", dec: 1, low: 3.9, high: 10.0, min: 0.6, max: 40 },
+    mgdl: { label: "mg/dL", dec: 0, low: 70, high: 180, min: 10, max: 720 }
+  };
+  var FACTOR = 18.018;
+
+  var state = {
+    unit: "mmol",
+    entries: [],
+    open: {},
+    editTime: {},
+    armed: {},
+    errors: {},
+    drafts: {},
+    storage: true
+  };
+
+  var log = document.getElementById("log");
+  var statusBox = document.getElementById("status");
+  var tally = document.getElementById("tally");
+
+  /* ---------- helpers ---------- */
+
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+  function hhmm(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function dayKey(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+
+  function dayLabel(key) {
+    var now = new Date();
+    if (key === dayKey(now)) return "Today";
+    if (key === dayKey(new Date(now.getTime() - 86400000))) return "Yesterday";
+    var p = key.split("-");
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
+  }
+
+  function convert(v, from, to) {
+    if (from === to) return v;
+    return to === "mmol" ? v / FACTOR : v * FACTOR;
+  }
+  function show(v, from) { return convert(v, from, state.unit).toFixed(UNITS[state.unit].dec); }
+  function band(v, from) {
+    var u = UNITS[state.unit];
+    var x = convert(v, from, state.unit);
+    if (x < u.low) return "low";
+    if (x > u.high) return "high";
+    return "good";
+  }
+  function bandWord(b) { return b === "good" ? "in range" : b; }
+
+  function minsBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 60000); }
+  function gap(fromISO, toISO) {
+    var mins = minsBetween(fromISO, toISO);
+    if (mins < 0) return "";
+    if (mins < 60) return "+" + mins + " min";
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return "+" + h + " h" + (m ? " " + pad(m) : "");
+  }
+
+  function parseReading(text) {
+    var cleaned = String(text).replace(",", ".").trim();
+    if (!cleaned) return null;
+    var n = parseFloat(cleaned);
+    if (!isFinite(n)) return null;
+    var u = UNITS[state.unit];
+    if (n < u.min || n > u.max) return null;
+    return n;
+  }
+
+  function sortedReadings(entry) {
+    return (entry.readings || []).slice().sort(function (a, b) {
+      return new Date(a.at) - new Date(b.at);
+    });
+  }
+
+  function newId() {
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function note(msg, warn) {
+    if (!msg) { statusBox.hidden = true; statusBox.textContent = ""; return; }
+    statusBox.hidden = false;
+    statusBox.className = "notice" + (warn ? " warn" : "");
+    statusBox.textContent = msg;
+  }
+
+  /* ---------- storage ---------- */
+
+  function load() {
+    var raw = null;
+    try { raw = window.localStorage.getItem(KEY); }
+    catch (e) {
+      state.storage = false;
+      note("This browser is not letting the page save anything, so today's entries will be lost when you close it. Turning off Private Browsing usually fixes it.", true);
+      return;
+    }
+    if (!raw) return;
+    try {
+      var data = JSON.parse(raw);
+      adopt(data);
+    } catch (e) {
+      note("Saved entries could not be read, so the log is starting empty. Your backup file, if you have one, can be restored below.", true);
+    }
+  }
+
+  function adopt(data) {
+    if (!data || typeof data !== "object") return 0;
+    if (data.unit === "mgdl" || data.unit === "mmol") state.unit = data.unit;
+    var rows = Array.isArray(data.entries) ? data.entries : [];
+    var kept = [];
+    rows.forEach(function (e) {
+      if (!e || !e.ateAt) return;
+      kept.push({
+        id: typeof e.id === "string" && e.id ? e.id : newId(),
+        kind: e.kind === "reading" ? "reading" : "meal",
+        ateAt: e.ateAt,
+        food: typeof e.food === "string" ? e.food : "",
+        readings: Array.isArray(e.readings) ? e.readings.filter(function (r) {
+          return r && isFinite(r.v) && r.at;
+        }).map(function (r) {
+          return { v: Number(r.v), u: r.u === "mgdl" ? "mgdl" : "mmol", at: r.at };
+        }) : []
+      });
+    });
+    state.entries = kept;
+    return kept.length;
+  }
+
+  function save() {
+    if (!state.storage) return;
+    try {
+      window.localStorage.setItem(KEY, JSON.stringify({
+        unit: state.unit,
+        entries: state.entries,
+        savedAt: new Date().toISOString()
+      }));
+    } catch (e) {
+      state.storage = false;
+      note("Saving failed — this device may be out of storage space. Take a backup before you close the page.", true);
+      render();
+    }
+  }
+
+  function localEntry(id) {
+    for (var i = 0; i < state.entries.length; i++) {
+      if (state.entries[i].id === id) return state.entries[i];
+    }
+    return null;
+  }
+
+  /* ---------- actions ---------- */
+
+  function addEntry(kind) {
+    note("");
+    var entry = { id: newId(), kind: kind, ateAt: new Date().toISOString(), food: "", readings: [] };
+    state.entries.unshift(entry);
+    if (kind === "reading") state.open[entry.id] = true;
+    save();
+    render();
+  }
+
+  function commitReading(id, text) {
+    var entry = localEntry(id);
+    if (!entry) return;
+    var n = parseReading(text);
+    if (n === null) {
+      if (String(text).trim() === "") { delete state.errors[id]; render(); return; }
+      state.errors[id] = "Check that number — expected something like " +
+        (state.unit === "mmol" ? "7.4" : "132") + " " + UNITS[state.unit].label + ".";
+      render();
+      return;
+    }
+    delete state.errors[id];
+    delete state.drafts["r-" + id];
+    delete state.open[id];
+    entry.readings = (entry.readings || []).concat([
+      { v: n, u: state.unit, at: new Date().toISOString() }
+    ]);
+    save();
+    render();
+  }
+
+  function commitNote(id, text) {
+    var entry = localEntry(id);
+    if (!entry) return;
+    var next = String(text).trim();
+    delete state.drafts["f-" + id];
+    if (next === (entry.food || "")) return;
+    entry.food = next;
+    save();
+  }
+
+  function commitTime(id, value) {
+    var entry = localEntry(id);
+    if (!entry || !value) return;
+    var p = value.split(":");
+    var d = new Date(entry.ateAt);
+    d.setHours(Number(p[0]), Number(p[1]), 0, 0);
+    entry.ateAt = d.toISOString();
+    delete state.editTime[id];
+    save();
+    render();
+  }
+
+  function removeEntry(id) {
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    delete state.armed[id];
+    save();
+    render();
+  }
+
+  function setUnit(u) {
+    if (state.unit === u) return;
+    state.unit = u;
+    document.getElementById("u-mmol").setAttribute("aria-pressed", String(u === "mmol"));
+    document.getElementById("u-mgdl").setAttribute("aria-pressed", String(u === "mgdl"));
+    save();
+    render();
+  }
+
+  /* ---------- export / restore ---------- */
+
+  function offer(filename, text, mime) {
+    var blob = new Blob([text], { type: mime + ";charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function stamp() {
+    var d = new Date();
+    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  }
+
+  function csvCell(v) {
+    var s = String(v === undefined || v === null ? "" : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function exportCsv() {
+    if (!state.entries.length) { note("Nothing to export yet."); return; }
+    var u = UNITS[state.unit];
+    var rows = [["date", "ate_at", "food", "reading", "unit", "tested_at", "minutes_after", "range"]];
+    state.entries.slice()
+      .sort(function (a, b) { return new Date(a.ateAt) - new Date(b.ateAt); })
+      .forEach(function (e) {
+        var d = new Date(e.ateAt);
+        var isMeal = e.kind !== "reading";
+        var reads = sortedReadings(e);
+        if (!reads.length) {
+          rows.push([dayKey(d), isMeal ? hhmm(d) : "", e.food || "", "", "", "", "", ""]);
+          return;
+        }
+        reads.forEach(function (r) {
+          rows.push([
+            dayKey(d),
+            isMeal ? hhmm(d) : "",
+            e.food || "",
+            convert(r.v, r.u, state.unit).toFixed(u.dec),
+            u.label,
+            hhmm(new Date(r.at)),
+            isMeal ? String(Math.max(0, minsBetween(e.ateAt, r.at))) : "",
+            bandWord(band(r.v, r.u))
+          ]);
+        });
+      });
+    var text = rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
+    offer("day-log-" + stamp() + ".csv", text, "text/csv");
+    note("CSV saved to your downloads.");
+  }
+
+  function exportJson() {
+    if (!state.entries.length) { note("Nothing to back up yet."); return; }
+    offer("day-log-backup-" + stamp() + ".json",
+      JSON.stringify({ unit: state.unit, entries: state.entries, savedAt: new Date().toISOString() }, null, 2),
+      "application/json");
+    note("Backup saved to your downloads. Keep it somewhere safe.");
+  }
+
+  function restore(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var data;
+      try { data = JSON.parse(String(reader.result)); }
+      catch (e) { note("That file is not a Day Log backup.", true); return; }
+      var count = adopt(data);
+      state.open = {}; state.editTime = {}; state.armed = {}; state.errors = {}; state.drafts = {};
+      document.getElementById("u-mmol").setAttribute("aria-pressed", String(state.unit === "mmol"));
+      document.getElementById("u-mgdl").setAttribute("aria-pressed", String(state.unit === "mgdl"));
+      save();
+      render();
+      note("Restored " + count + (count === 1 ? " entry" : " entries") + " from the backup.");
+    };
+    reader.onerror = function () { note("That file could not be read.", true); };
+    reader.readAsText(file);
+  }
+
+  /* ---------- rendering ---------- */
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+
+  function renderEmpty() {
+    var box = el("div", "empty");
+    box.appendChild(el("b", null, "Nothing logged yet"));
+    var ol = document.createElement("ol");
+    ol.appendChild(el("li", null, "Tap “I ate just now” as you start eating — that stamps the time."));
+    ol.appendChild(el("li", null, "When you test later, type the number in the box on that line."));
+    ol.appendChild(el("li", null, "The reading keeps its own time, so you can see the gap."));
+    box.appendChild(ol);
+    return box;
+  }
+
+  function readingSlot(entry) {
+    var slot = el("div", "slot");
+    var input = document.createElement("input");
+    input.type = "text";
+    input.id = "r-" + entry.id;
+    input.inputMode = "decimal";
+    input.autocomplete = "off";
+    input.placeholder = state.unit === "mmol" ? "7.4" : "132";
+    input.setAttribute("aria-label", "Blood sugar reading in " + UNITS[state.unit].label);
+    input.value = state.drafts["r-" + entry.id] || "";
+    input.addEventListener("input", function () { state.drafts[input.id] = input.value; });
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); commitReading(entry.id, input.value); }
+    });
+    input.addEventListener("blur", function () {
+      if (input.value.trim()) commitReading(entry.id, input.value);
+    });
+    var save2 = el("button", "save", "✓");
+    save2.type = "button";
+    save2.setAttribute("aria-label", "Save reading");
+    save2.addEventListener("click", function () { commitReading(entry.id, input.value); });
+    slot.appendChild(input);
+    slot.appendChild(save2);
+    return slot;
+  }
+
+  function card(entry) {
+    var readings = sortedReadings(entry);
+    var isMeal = entry.kind !== "reading";
+    var waiting = isMeal && readings.length === 0;
+    var node = el("div", "card" + (waiting ? " waiting" : ""));
+
+    var meal = el("div", "meal");
+    var when = el("div", "when");
+    if (isMeal) {
+      if (state.editTime[entry.id]) {
+        var t = document.createElement("input");
+        t.type = "time";
+        t.id = "t-" + entry.id;
+        t.value = hhmm(new Date(entry.ateAt));
+        t.addEventListener("change", function () { commitTime(entry.id, t.value); });
+        t.addEventListener("blur", function () { commitTime(entry.id, t.value); });
+        when.appendChild(t);
+      } else {
+        var clock = el("button", "clock", hhmm(new Date(entry.ateAt)));
+        clock.type = "button";
+        clock.title = "Tap to correct the time";
+        clock.setAttribute("aria-label", "Ate at " + hhmm(new Date(entry.ateAt)) + " — tap to correct");
+        clock.addEventListener("click", function () { state.editTime[entry.id] = true; render(); });
+        when.appendChild(clock);
+      }
+      when.appendChild(el("span", "kind", "ate"));
+    } else {
+      when.appendChild(el("span", "kind", "reading only"));
+    }
+    meal.appendChild(when);
+
+    if (isMeal) {
+      var food = document.createElement("input");
+      food.type = "text";
+      food.className = "note";
+      food.id = "f-" + entry.id;
+      food.placeholder = "What did you eat? (optional)";
+      food.setAttribute("aria-label", "What you ate");
+      food.value = state.drafts["f-" + entry.id] !== undefined ? state.drafts["f-" + entry.id] : (entry.food || "");
+      food.addEventListener("input", function () { state.drafts[food.id] = food.value; });
+      food.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); food.blur(); }
+      });
+      food.addEventListener("blur", function () { commitNote(entry.id, food.value); });
+      meal.appendChild(food);
+    }
+    node.appendChild(meal);
+
+    var box = el("div", "readings");
+    readings.forEach(function (r) {
+      var row = el("div", "reading");
+      row.appendChild(el("span", "val", show(r.v, r.u)));
+      row.appendChild(el("span", "unit", UNITS[state.unit].label));
+      box.appendChild(row);
+
+      var meta = el("div", "meta");
+      meta.appendChild(el("span", null, hhmm(new Date(r.at))));
+      if (isMeal) {
+        var g = gap(entry.ateAt, r.at);
+        if (g) meta.appendChild(el("span", null, g));
+      }
+      var b = band(r.v, r.u);
+      meta.appendChild(el("span", "chip " + b, bandWord(b)));
+      box.appendChild(meta);
+    });
+
+    if (readings.length === 0 || state.open[entry.id]) {
+      box.appendChild(readingSlot(entry));
+    } else {
+      var more = el("button", "addmore", "+ another reading");
+      more.type = "button";
+      more.addEventListener("click", function () { state.open[entry.id] = true; render(); });
+      box.appendChild(more);
+    }
+    node.appendChild(box);
+
+    if (state.errors[entry.id]) node.appendChild(el("div", "err", state.errors[entry.id]));
+
+    var end = el("div", "rowend");
+    var kill = el("button", "kill" + (state.armed[entry.id] ? " armed" : ""),
+      state.armed[entry.id] ? "Tap again to delete" : "Delete");
+    kill.type = "button";
+    kill.addEventListener("click", function () {
+      if (state.armed[entry.id]) removeEntry(entry.id);
+      else { state.armed[entry.id] = true; render(); }
+    });
+    end.appendChild(kill);
+    node.appendChild(end);
+
+    return node;
+  }
+
+  function render() {
+    var active = document.activeElement;
+    var activeId = active && active.id ? active.id : null;
+    var caret = null;
+    if (active && typeof active.selectionStart === "number") {
+      try { caret = [active.selectionStart, active.selectionEnd]; } catch (e) { caret = null; }
+    }
+
+    log.textContent = "";
+
+    if (!state.entries.length) {
+      log.appendChild(renderEmpty());
+      tally.textContent = "Nothing logged yet";
+    } else {
+      var groups = [], index = {};
+      state.entries.slice()
+        .sort(function (a, b) { return new Date(b.ateAt) - new Date(a.ateAt); })
+        .forEach(function (e) {
+          var k = dayKey(new Date(e.ateAt));
+          if (!index[k]) { index[k] = []; groups.push(k); }
+          index[k].push(e);
+        });
+
+      groups.forEach(function (k) {
+        var head = el("div", "day");
+        head.appendChild(el("h2", null, dayLabel(k)));
+        var reads = 0;
+        index[k].forEach(function (e) { reads += (e.readings || []).length; });
+        head.appendChild(el("span", "count",
+          index[k].length + (index[k].length === 1 ? " entry" : " entries") + " · " +
+          reads + (reads === 1 ? " reading" : " readings")));
+        log.appendChild(head);
+
+        var cards = el("div", "cards");
+        index[k].forEach(function (e) { cards.appendChild(card(e)); });
+        log.appendChild(cards);
+      });
+
+      var waitingCount = state.entries.filter(function (e) {
+        return e.kind !== "reading" && (e.readings || []).length === 0;
+      }).length;
+      tally.textContent = waitingCount
+        ? waitingCount + (waitingCount === 1 ? " meal awaiting a reading" : " meals awaiting a reading")
+        : state.entries.length + (state.entries.length === 1 ? " entry logged" : " entries logged");
+    }
+
+    if (activeId) {
+      var back = document.getElementById(activeId);
+      if (back) {
+        back.focus();
+        if (caret) { try { back.setSelectionRange(caret[0], caret[1]); } catch (e) {} }
+      }
+    }
+  }
+
+  /* ---------- wiring ---------- */
+
+  document.getElementById("ate").addEventListener("click", function () { addEntry("meal"); });
+  document.getElementById("readonly").addEventListener("click", function () { addEntry("reading"); });
+  document.getElementById("u-mmol").addEventListener("click", function () { setUnit("mmol"); });
+  document.getElementById("u-mgdl").addEventListener("click", function () { setUnit("mgdl"); });
+  document.getElementById("csv").addEventListener("click", exportCsv);
+  document.getElementById("json").addEventListener("click", exportJson);
+  document.getElementById("restore").addEventListener("change", function (ev) {
+    var f = ev.target.files && ev.target.files[0];
+    if (f) restore(f);
+    ev.target.value = "";
+  });
+
+  load();
+  document.getElementById("u-mmol").setAttribute("aria-pressed", String(state.unit === "mmol"));
+  document.getElementById("u-mgdl").setAttribute("aria-pressed", String(state.unit === "mgdl"));
+  render();
+
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
