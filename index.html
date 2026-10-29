@@ -1015,6 +1015,23 @@ footer p{margin:0 0 8px}
     ev.target.value = "";
   });
 
+  /* A phone can discard a backgrounded tab without warning, so anything typed
+     but not yet confirmed is written out as the page goes away. A half-typed
+     number is left alone — it would only fail validation. */
+  function flushDrafts() {
+    Object.keys(state.drafts).forEach(function (key) {
+      var id = key.slice(2);
+      var text = state.drafts[key];
+      if (key.charAt(0) === "f") commitNote(id, text);
+      else if (key.charAt(0) === "r" && parseReading(text) !== null) commitReading(id, text);
+    });
+  }
+
+  window.addEventListener("pagehide", flushDrafts);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushDrafts();
+  });
+
   load();
   syncControls();
   render();
