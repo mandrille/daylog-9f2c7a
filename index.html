@@ -361,6 +361,23 @@ footer p{margin:0 0 8px}
   font-size:0.76rem;
   cursor:pointer;
 }
+.setting{margin-bottom:10px}
+.setting label{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  color:var(--ink);
+  font-size:0.86rem;
+  font-weight:500;
+  cursor:pointer;
+}
+.setting input{
+  width:19px;height:19px;
+  accent-color:var(--pending);
+  margin:0;
+  flex:none;
+}
+#legend{color:var(--muted)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -387,6 +404,10 @@ footer p{margin:0 0 8px}
 </main>
 
 <footer>
+  <div class="setting">
+    <label for="preg"><input type="checkbox" id="preg" checked> Pregnancy targets</label>
+  </div>
+  <p id="legend"></p>
   <div class="tools">
     <button type="button" id="csv">Export CSV</button>
     <button type="button" id="json">Back up (JSON)</button>
@@ -394,7 +415,7 @@ footer p{margin:0 0 8px}
   </div>
   <p>Everything you log stays in this browser on this device. It is never sent anywhere, so nobody else can read it — and clearing your browser data or switching phone will lose it. Take a backup now and then.</p>
   <p>Times come from this device's clock. Tap a time to correct it.</p>
-  <p>Range labels use the usual general reference bands (3.9–10.0 mmol/L, 70–180 mg/dL), not a target set for you. Talk to your diabetes team about your own numbers.</p>
+  <p>This is a notebook, not medical advice, and it does not decide anything about treatment.</p>
 </footer>
 
 <script>
@@ -404,12 +425,25 @@ footer p{margin:0 0 8px}
   var KEY = "daylog.v1";
 
   var UNITS = {
-    mmol: { label: "mmol/L", dec: 1, low: 3.9, high: 10.0, min: 0.6, max: 40 },
-    mgdl: { label: "mg/dL", dec: 0, low: 70, high: 180, min: 10, max: 720 }
+    mmol: { label: "mmol/L", dec: 1, min: 0.6, max: 40 },
+    mgdl: { label: "mg/dL", dec: 0, min: 10, max: 720 }
   };
   var FACTOR = 18.018;
 
+  /* Thresholds are held in mmol/L and converted for display.
+     Pregnancy figures are the NICE NG3 targets: fasting below 5.3, one hour
+     after eating below 7.8, two hours after below 6.4, and not below 4.0. */
+  var GENERAL = { low: 3.9, high: 10.0 };
+  var PREGNANT = {
+    low: 4.0,
+    fasting: { high: 5.3, label: "fasting" },
+    hour1: { high: 7.8, label: "1 h" },
+    hour2: { high: 6.4, label: "2 h" }
+  };
+  var HOUR1_CUTOFF = 90; /* minutes — tested sooner than this counts as the 1 h check */
+
   var state = {
+    preg: true,
     unit: "mmol",
     entries: [],
     open: {},
@@ -423,6 +457,7 @@ footer p{margin:0 0 8px}
   var log = document.getElementById("log");
   var statusBox = document.getElementById("status");
   var tally = document.getElementById("tally");
+  var legend = document.getElementById("legend");
 
   /* ---------- helpers ---------- */
 
@@ -446,14 +481,48 @@ footer p{margin:0 0 8px}
     return to === "mmol" ? v / FACTOR : v * FACTOR;
   }
   function show(v, from) { return convert(v, from, state.unit).toFixed(UNITS[state.unit].dec); }
-  function band(v, from) {
-    var u = UNITS[state.unit];
-    var x = convert(v, from, state.unit);
-    if (x < u.low) return "low";
-    if (x > u.high) return "high";
-    return "good";
+
+  /* Which target a reading is judged against depends on how long after the meal
+     it was taken, so the gap the log already records picks the band. */
+  function targetFor(entry, r) {
+    if (!state.preg) return { low: GENERAL.low, high: GENERAL.high, label: "" };
+    if (entry.kind === "reading") {
+      return { low: PREGNANT.low, high: PREGNANT.fasting.high, label: PREGNANT.fasting.label };
+    }
+    var t = minsBetween(entry.ateAt, r.at) < HOUR1_CUTOFF ? PREGNANT.hour1 : PREGNANT.hour2;
+    return { low: PREGNANT.low, high: t.high, label: t.label };
   }
+
+  function inMmol(r) { return r.u === "mgdl" ? r.v / FACTOR : r.v; }
+
+  function assess(entry, r) {
+    var t = targetFor(entry, r);
+    var x = inMmol(r);
+    t.band = x < t.low ? "low" : (x > t.high ? "high" : "good");
+    return t;
+  }
+
   function bandWord(b) { return b === "good" ? "in range" : b; }
+  function chipWord(t) { return bandWord(t.band) + (t.label ? " · " + t.label : ""); }
+
+  function fromMmol(x) { return convert(x, "mmol", state.unit).toFixed(UNITS[state.unit].dec); }
+
+  function renderLegend() {
+    var u = UNITS[state.unit].label;
+    legend.textContent = state.preg
+      ? "Judged against the NICE pregnancy targets: under " + fromMmol(PREGNANT.fasting.high) +
+        " fasting, under " + fromMmol(PREGNANT.hour1.high) + " when tested within 90 minutes of eating, under " +
+        fromMmol(PREGNANT.hour2.high) + " after that, and not below " + fromMmol(PREGNANT.low) + " " + u +
+        ". If the maternity team gave different numbers, follow theirs."
+      : "Judged against the usual general reference band, " + fromMmol(GENERAL.low) + "–" +
+        fromMmol(GENERAL.high) + " " + u + " — a general range, not a target set for anyone in particular.";
+  }
+
+  function syncControls() {
+    document.getElementById("u-mmol").setAttribute("aria-pressed", String(state.unit === "mmol"));
+    document.getElementById("u-mgdl").setAttribute("aria-pressed", String(state.unit === "mgdl"));
+    document.getElementById("preg").checked = state.preg;
+  }
 
   function minsBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 60000); }
   function gap(fromISO, toISO) {
@@ -513,6 +582,7 @@ footer p{margin:0 0 8px}
   function adopt(data) {
     if (!data || typeof data !== "object") return 0;
     if (data.unit === "mgdl" || data.unit === "mmol") state.unit = data.unit;
+    if (typeof data.pregnancy === "boolean") state.preg = data.pregnancy;
     var rows = Array.isArray(data.entries) ? data.entries : [];
     var kept = [];
     rows.forEach(function (e) {
@@ -538,6 +608,7 @@ footer p{margin:0 0 8px}
     try {
       window.localStorage.setItem(KEY, JSON.stringify({
         unit: state.unit,
+        pregnancy: state.preg,
         entries: state.entries,
         savedAt: new Date().toISOString()
       }));
@@ -652,7 +723,8 @@ footer p{margin:0 0 8px}
   function exportCsv() {
     if (!state.entries.length) { note("Nothing to export yet."); return; }
     var u = UNITS[state.unit];
-    var rows = [["date", "ate_at", "food", "reading", "unit", "tested_at", "minutes_after", "range"]];
+    var rows = [["date", "ate_at", "food", "reading", "unit", "tested_at",
+                 "minutes_after", "target_type", "target_max", "range"]];
     state.entries.slice()
       .sort(function (a, b) { return new Date(a.ateAt) - new Date(b.ateAt); })
       .forEach(function (e) {
@@ -660,10 +732,11 @@ footer p{margin:0 0 8px}
         var isMeal = e.kind !== "reading";
         var reads = sortedReadings(e);
         if (!reads.length) {
-          rows.push([dayKey(d), isMeal ? hhmm(d) : "", e.food || "", "", "", "", "", ""]);
+          rows.push([dayKey(d), isMeal ? hhmm(d) : "", e.food || "", "", "", "", "", "", "", ""]);
           return;
         }
         reads.forEach(function (r) {
+          var t = assess(e, r);
           rows.push([
             dayKey(d),
             isMeal ? hhmm(d) : "",
@@ -672,7 +745,9 @@ footer p{margin:0 0 8px}
             u.label,
             hhmm(new Date(r.at)),
             isMeal ? String(Math.max(0, minsBetween(e.ateAt, r.at))) : "",
-            bandWord(band(r.v, r.u))
+            t.label || "general",
+            convert(t.high, "mmol", state.unit).toFixed(u.dec),
+            bandWord(t.band)
           ]);
         });
       });
@@ -684,7 +759,12 @@ footer p{margin:0 0 8px}
   function exportJson() {
     if (!state.entries.length) { note("Nothing to back up yet."); return; }
     offer("day-log-backup-" + stamp() + ".json",
-      JSON.stringify({ unit: state.unit, entries: state.entries, savedAt: new Date().toISOString() }, null, 2),
+      JSON.stringify({
+        unit: state.unit,
+        pregnancy: state.preg,
+        entries: state.entries,
+        savedAt: new Date().toISOString()
+      }, null, 2),
       "application/json");
     note("Backup saved to your downloads. Keep it somewhere safe.");
   }
@@ -697,8 +777,7 @@ footer p{margin:0 0 8px}
       catch (e) { note("That file is not a Day Log backup.", true); return; }
       var count = adopt(data);
       state.open = {}; state.editTime = {}; state.armed = {}; state.errors = {}; state.drafts = {};
-      document.getElementById("u-mmol").setAttribute("aria-pressed", String(state.unit === "mmol"));
-      document.getElementById("u-mgdl").setAttribute("aria-pressed", String(state.unit === "mgdl"));
+      syncControls();
       save();
       render();
       note("Restored " + count + (count === 1 ? " entry" : " entries") + " from the backup.");
@@ -737,17 +816,26 @@ footer p{margin:0 0 8px}
     input.placeholder = state.unit === "mmol" ? "7.4" : "132";
     input.setAttribute("aria-label", "Blood sugar reading in " + UNITS[state.unit].label);
     input.value = state.drafts["r-" + entry.id] || "";
+
+    /* Saving removes this input, and removal fires blur — so each box saves once only. */
+    var spent = false;
+    function commit() {
+      if (spent) return;
+      spent = true;
+      commitReading(entry.id, input.value);
+    }
+
     input.addEventListener("input", function () { state.drafts[input.id] = input.value; });
     input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") { ev.preventDefault(); commitReading(entry.id, input.value); }
+      if (ev.key === "Enter") { ev.preventDefault(); commit(); }
     });
     input.addEventListener("blur", function () {
-      if (input.value.trim()) commitReading(entry.id, input.value);
+      if (input.value.trim()) commit();
     });
     var save2 = el("button", "save", "✓");
     save2.type = "button";
     save2.setAttribute("aria-label", "Save reading");
-    save2.addEventListener("click", function () { commitReading(entry.id, input.value); });
+    save2.addEventListener("click", commit);
     slot.appendChild(input);
     slot.appendChild(save2);
     return slot;
@@ -767,8 +855,14 @@ footer p{margin:0 0 8px}
         t.type = "time";
         t.id = "t-" + entry.id;
         t.value = hhmm(new Date(entry.ateAt));
-        t.addEventListener("change", function () { commitTime(entry.id, t.value); });
-        t.addEventListener("blur", function () { commitTime(entry.id, t.value); });
+        var tspent = false;
+        function closeTime() {
+          if (tspent) return;
+          tspent = true;
+          commitTime(entry.id, t.value);
+        }
+        t.addEventListener("change", closeTime);
+        t.addEventListener("blur", closeTime);
         when.appendChild(t);
       } else {
         var clock = el("button", "clock", hhmm(new Date(entry.ateAt)));
@@ -814,8 +908,8 @@ footer p{margin:0 0 8px}
         var g = gap(entry.ateAt, r.at);
         if (g) meta.appendChild(el("span", null, g));
       }
-      var b = band(r.v, r.u);
-      meta.appendChild(el("span", "chip " + b, bandWord(b)));
+      var t = assess(entry, r);
+      meta.appendChild(el("span", "chip " + t.band, chipWord(t)));
       box.appendChild(meta);
     });
 
@@ -846,6 +940,8 @@ footer p{margin:0 0 8px}
   }
 
   function render() {
+    renderLegend();
+
     var active = document.activeElement;
     var activeId = active && active.id ? active.id : null;
     var caret = null;
@@ -906,6 +1002,11 @@ footer p{margin:0 0 8px}
   document.getElementById("readonly").addEventListener("click", function () { addEntry("reading"); });
   document.getElementById("u-mmol").addEventListener("click", function () { setUnit("mmol"); });
   document.getElementById("u-mgdl").addEventListener("click", function () { setUnit("mgdl"); });
+  document.getElementById("preg").addEventListener("change", function (ev) {
+    state.preg = !!ev.target.checked;
+    save();
+    render();
+  });
   document.getElementById("csv").addEventListener("click", exportCsv);
   document.getElementById("json").addEventListener("click", exportJson);
   document.getElementById("restore").addEventListener("change", function (ev) {
@@ -915,8 +1016,7 @@ footer p{margin:0 0 8px}
   });
 
   load();
-  document.getElementById("u-mmol").setAttribute("aria-pressed", String(state.unit === "mmol"));
-  document.getElementById("u-mgdl").setAttribute("aria-pressed", String(state.unit === "mgdl"));
+  syncControls();
   render();
 
   if ("serviceWorker" in navigator && location.protocol === "https:") {

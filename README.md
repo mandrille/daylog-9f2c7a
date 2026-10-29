@@ -6,6 +6,24 @@ Tap **I ate just now** and the time is stamped. When you test afterwards, type t
 number in the box on that line; the reading is stamped with its own time and the
 gap between the two is shown, along with a low / in range / high label.
 
+## Targets
+
+**Pregnancy targets** are on by default, and they depend on when the test was
+taken — which is why the gap matters:
+
+| When the reading was taken | Target |
+| --- | --- |
+| On its own, no meal attached (fasting) | below 5.3 mmol/L |
+| Within 90 minutes of a meal | below 7.8 mmol/L |
+| More than 90 minutes after a meal | below 6.4 mmol/L |
+| Any time | not below 4.0 mmol/L |
+
+These are the NICE NG3 targets for diabetes in pregnancy. A maternity team may
+set different ones; theirs win, and the toggle in the footer switches back to the
+general 3.9–10.0 mmol/L reference band. The chip on each reading names the target
+it was judged against ("in range · 1 h", "high · fasting"), and both the chip and
+the target appear in the CSV export.
+
 ## Privacy
 
 Entries are kept in the browser's own `localStorage` on the device that typed
